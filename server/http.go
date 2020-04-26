@@ -61,7 +61,6 @@ func HTTPGo(address string) {
 			panic(e)
 		}
 		answer := startWebRTCServer(t.Offer)
-		// Output the answer in base64 so we can paste it in browser
 		w.Write(answer)
 	})
 	handler := cors.Default().Handler(mux)

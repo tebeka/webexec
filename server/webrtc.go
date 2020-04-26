@@ -18,7 +18,6 @@ type dataChannelPipe struct {
 
 func (pipe *dataChannelPipe) Write(p []byte) (n int, err error) {
 	pipe.d.SendText(string(p))
-	log.Printf("> %v", p)
 	return len(p), nil
 }
 
@@ -37,16 +36,24 @@ func NewWebRTCServer(config webrtc.Configuration) (pc *webrtc.PeerConnection, er
 	// Register data channel creation handling
 	pc.OnDataChannel(func(d *webrtc.DataChannel) {
 		if d.Label() == "signaling" {
+			log.Printf("Got singalling channel")
 			return
 		}
 		var cmd *exec.Cmd
 		var ptmx *os.File
+		var dcc *webrtc.DataChannel
 		pipe := dataChannelPipe{d}
 		cmdReady := make(chan bool, 1)
 		d.OnOpen(func() {
 			l := d.Label()
 			log.Printf("New Data channel %q\n", l)
 			c := strings.Split(l, " ")
+			if c[0] == "CnTrL" {
+			}
+			dcc, err = pc.CreateDataChannel("c&c", &webrtc.DataChannelInit{})
+			if err != nil || dcc == nil {
+				log.Printf("Failed creating data channel: %v", err)
+			}
 			cmd = exec.Command(c[0], c[1:]...)
 			ptmx, err = pty.Start(cmd)
 			if err != nil {
@@ -69,8 +76,6 @@ func NewWebRTCServer(config webrtc.Configuration) (pc *webrtc.PeerConnection, er
 		d.OnMessage(func(msg webrtc.DataChannelMessage) {
 			p := msg.Data
 			<-cmdReady
-			log.Printf("< %v ", p)
-			// l, err := ptmx.Write([]byte("ls\n"))
 			l, err := ptmx.Write(p)
 			if err != nil {
 				log.Printf("Stdin Write returned an error: %v %v", err, cmd.ProcessState.String())
