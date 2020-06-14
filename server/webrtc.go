@@ -59,6 +59,7 @@ type Peer struct {
 	Answer      []byte
 	Channels    []*Channel
 	cdc         *webrtc.DataChannel
+	Offer       []byte
 }
 
 func NewWebRTCServer() (server WebRTCServer, err error) {
@@ -157,12 +158,10 @@ func (cmd *Command) Kill() {
 
 // Listen opens a peer connection and starts listening for the offer
 func (server *WebRTCServer) Listen(remote string) *Peer {
-	// TODO: protected the next two line from re entrancy
-	peer := Peer{server, len(server.Peers), "init", remote, nil, 0, nil, nil, nil, nil}
-	server.Peers = append(server.Peers, peer)
-
 	// Create a new webrtc API with a custom logger
 	// This SettingEngine allows non-standard WebRTC behavior
+	var answer []byte
+	var offer []byte
 	s := webrtc.SettingEngine{}
 	s.SetConnectionTimeout(connectionTimeout, keepAliveInterval)
 	//TODO: call func (e *SettingEngine) SetEphemeralUDPPortRange(portMin, portMax uint16)
@@ -196,17 +195,22 @@ func (server *WebRTCServer) Listen(remote string) *Peer {
 		if err != nil {
 			panic(err)
 		}
-		answer, err := pc.CreateAnswer(nil)
+		a, err := pc.CreateAnswer(nil)
 		if err != nil {
 			panic(err)
 		}
 		// Sets the LocalDescription, and starts listning for UDP packets
-		err = pc.SetLocalDescription(answer)
+		err = pc.SetLocalDescription(a)
 		if err != nil {
 			panic(err)
 		}
-		peer.Answer = []byte(signal.Encode(answer))
+		answer = []byte(signal.Encode(a))
 	}
+	// TODO: protected the next two line from re entrancy
+	peer := Peer{server, len(server.Peers), "init",
+		remote, nil, 0, nil, answer, nil, nil, offer}
+	server.Peers = append(server.Peers, peer)
+
 	pc.OnDataChannel(peer.OnChannelReq)
 	peer.pc = pc
 	return &peer

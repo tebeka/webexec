@@ -34,7 +34,7 @@ type Service struct {
 // Manage by daemon commands or run the daemon
 func (service *Service) Manage() (string, error) {
 
-	usage := "Usage: myservice install | remove | start | stop | status"
+	usage := "Usage: webexec install | remove | start | stop | status | listen <SDP>"
 
 	// if received any kind of command, do it
 	if len(os.Args) > 1 {
@@ -50,6 +50,13 @@ func (service *Service) Manage() (string, error) {
 			return service.Stop()
 		case "status":
 			return service.Status()
+		case "listen":
+			conn, err := net.Dial("unix", "/tmp/webexec.sock")
+			if err != nil {
+				errlog.Println("Error: failed to open the socket for write", err)
+			}
+			conn.Write([]byte(os.Args[2]))
+			//TODO: read the server's offer from the channel.
 		default:
 			return usage, nil
 		}
@@ -109,7 +116,14 @@ func handleClient(client net.Conn) {
 		if numbytes == 0 || err != nil {
 			return
 		}
-		srvr.Listen(string(buf))
+		peer := srvr.Listen(string(buf))
+		n, err := client.Write(peer.Offer)
+		if err != nil {
+			errlog.Println("Error: failed to write the offer back to the socker: ", err)
+		}
+		if n != len(peer.Offer) {
+			errlog.Println("Error: got strange len trying to write the offer back to the socker: ", n)
+		}
 	}
 }
 
@@ -126,24 +140,16 @@ func init() {
 }
 
 func main() {
-	if len(os.Args) == 1 {
-		srv, err := daemon.New(name, description, dependencies...)
-		if err != nil {
-			errlog.Println("Error: ", err)
-			os.Exit(1)
-		}
-		service := &Service{srv}
-		status, err := service.Manage()
-		if err != nil {
-			errlog.Println(status, "\nError: ", err)
-			os.Exit(1)
-		}
-		fmt.Println(status)
-	} else {
-		conn, err := net.Dial("unix", "/tmp/webexec.sock")
-		if err != nil {
-			errlog.Println("Error: failed to open the socket for write", err)
-		}
-		conn.Write([]byte(os.Args[1]))
+	srv, err := daemon.New(name, description, dependencies...)
+	if err != nil {
+		errlog.Println("Error: ", err)
+		os.Exit(1)
 	}
+	service := &Service{srv}
+	status, err := service.Manage()
+	if err != nil {
+		errlog.Println(status, "\nError: ", err)
+		os.Exit(1)
+	}
+	fmt.Println(status)
 }
